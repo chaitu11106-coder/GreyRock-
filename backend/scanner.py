@@ -306,8 +306,7 @@ def analyze_stock(symbol: str) -> dict | None:
         # Get 1-year daily history for EMAs
         hist = ticker.history(period="1y", interval="1d")
         if hist is None or len(hist) < 210:
-            # Fallback to demo data if real data unavailable
-            return generate_demo_result(symbol)
+            return None  # Not enough data, skip this stock
 
         closes = hist['Close'].values
         highs = hist['High'].values
@@ -425,8 +424,8 @@ def analyze_stock(symbol: str) -> dict | None:
         }
 
     except Exception as e:
-        # Return demo data when live data fails
-        return generate_demo_result(symbol)
+        print(f"Error analyzing {symbol}: {e}")
+        return None  # Skip stocks with errors, only show real data
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN SCAN
@@ -436,8 +435,8 @@ def run_scan(max_results=5) -> dict:
     scanned = 0
     errors = 0
     
-    # For demo/testing, only scan top 20 stocks to speed up
-    test_universe = STOCK_UNIVERSE[:20]
+    # Scan full universe for real results
+    test_universe = STOCK_UNIVERSE
 
     for symbol in test_universe:
         try:
