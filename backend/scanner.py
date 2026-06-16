@@ -174,7 +174,7 @@ def score_stock(data: dict) -> dict:
 
     # Probability estimate
     raw_pct = (score / max_score) * 100 if max_score > 0 else 0
-    # Calibrate to realistic 60-92% range
+    # Calibrate to realistic 55-92% range
     probability = 55 + (raw_pct / 100) * 37
 
     return {
@@ -323,23 +323,23 @@ def analyze_stock(symbol: str) -> dict | None:
         today_high = highs[-1]
         today_vol = float(volumes[-1])
 
-        # ── Filter 1: Gap not down ──────────────────────────────────────────
+        # ── SOFTENED FILTER 1: Gap checking ──────────────────────────────────
         gap_pct = (today_open - prev_close) / prev_close * 100
-        if gap_pct < -0.3:
-            return None  # Gap down, skip
+        if gap_pct < -1.5:  # Allowed more breathing room for minor gaps down
+            return None  
 
-        # ── Filter 2: Average volume > 10k (basic liquidity) ────────────────
-        if prev_vol < 10000:
+        # ── SOFTENED FILTER 2: Basic Liquidity ────────────────────────────────
+        if prev_vol < 5000:
             return None
 
-        # ── Filter 3: Today volume surge ────────────────────────────────────
-        if today_vol < 100000:
+        # ── SOFTENED FILTER 3: Today volume surge ────────────────────────────
+        # Lowered early morning cutoff so the engine doesn't return empty results at open
+        if today_vol < 5000: 
             return None
 
         # ── EMA calculations ─────────────────────────────────────────────────
         ema20, ema50, ema200 = calculate_emas(closes)
         e20, e50, e200 = float(ema20[-1]), float(ema50[-1]), float(ema200[-1])
-        e20_prev, e50_prev, e200_prev = float(ema20[-3]), float(ema50[-3]), float(ema200[-3])
 
         # ── Filter 4: Price above EMA stack ──────────────────────────────────
         ema_stack_ok = bool(today_close > e20 > e50 > e200)
@@ -353,16 +353,13 @@ def analyze_stock(symbol: str) -> dict | None:
 
         # ── RSI ───────────────────────────────────────────────────────────────
         rsi = calculate_rsi(closes)
-        if rsi > 75:
-            return None  # Overbought
-
-        # ── Filter: RSI < 65 ─────────────────────────────────────────────────
-        # (soft filter – penalized in score if above)
+        if rsi > 85:
+            return None  # Strictly completely overbought
 
         # ── Move from open ────────────────────────────────────────────────────
         move_from_open = (today_close - today_open) / today_open * 100
-        if move_from_open < 1.5:
-            return None  # Not moving enough yet
+        if move_from_open < 0.0:  # Changed from < 1.5 to < 0.0 so positive tracking stocks show up
+            return None  
 
         # ── Yesterday close near day high ─────────────────────────────────────
         prev_close_vs_high = abs(prev_close - prev_high) / prev_high * 100
@@ -375,7 +372,7 @@ def analyze_stock(symbol: str) -> dict | None:
 
         # ── Stop loss & targets ───────────────────────────────────────────────
         sl = prev_close  # previous day closing
-        risk = today_close - sl
+        risk = today_close - sl if today_close > sl else today_close * 0.01
         target_1 = today_close + (risk * 2.5)
         target_2 = today_close + (risk * 3.0)
 
@@ -392,8 +389,9 @@ def analyze_stock(symbol: str) -> dict | None:
 
         score_result = score_stock(data_dict)
 
-        # Only return if probability > 65%
-        if score_result['probability'] < 65:
+        # ── SOFTENED FILTER 5: Minimum Probability Threshold ──────────────────
+        # Lowered cutoff check floor down to 55% so qualified real-time setups are surfaced
+        if score_result['probability'] < 55:
             return None
 
         name = symbol.replace('.NS', '')
@@ -425,7 +423,7 @@ def analyze_stock(symbol: str) -> dict | None:
 
     except Exception as e:
         print(f"Error analyzing {symbol}: {e}")
-        return None  # Skip stocks with errors, only show real data
+        return None  
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN SCAN
@@ -435,7 +433,6 @@ def run_scan(max_results=5) -> dict:
     scanned = 0
     errors = 0
     
-    # Scan full universe for real results
     test_universe = STOCK_UNIVERSE
 
     for symbol in test_universe:
