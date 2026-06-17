@@ -375,6 +375,15 @@ def analyze_stock(symbol: str) -> dict | None:
 # MAIN SCAN
 # ─────────────────────────────────────────────────────────────────────────────
 def run_scan(max_results=5) -> dict:
+    # Warm up yfinance crumb/cookie session before batch scanning.
+    # This fixes "Expecting value: line 1 column 1" on cloud hosts (Render, Railway, etc.)
+    # where Yahoo Finance blocks cold requests from datacenter IPs.
+    try:
+        yf.download("RELIANCE.NS", period="1d", progress=False, auto_adjust=True)
+        log.info("yfinance session warmed up ✅")
+    except Exception as e:
+        log.warning(f"yfinance warmup failed (non-fatal): {e}")
+
     session = get_market_session()
     log.info(f"🪨 GreyRock scan starting — session={session}, universe={len(STOCK_UNIVERSE)} stocks")
 
